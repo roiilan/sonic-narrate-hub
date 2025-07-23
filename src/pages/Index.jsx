@@ -23,24 +23,11 @@ const Index = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8 max-w-2xl">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-2">Smart Audio Transcription</h1>
-          <p className="text-muted-foreground">Upload an audio file and get accurate transcription</p>
-        </div>
-
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
+      <div className="container mx-auto px-4 py-6 max-w-md">
         <AuthSection />
         
         {user && <AudioUploader />}
-        
-        {!user && (
-          <div className="text-center py-8">
-            <p className="text-muted-foreground">
-              Login to start uploading audio files
-            </p>
-          </div>
-        )}
       </div>
     </div>
   );
