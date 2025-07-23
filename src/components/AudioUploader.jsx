@@ -31,8 +31,8 @@ const AudioUploader = () => {
 
     if (!file.type.startsWith('audio/')) {
       toast({
-        title: "שגיאה",
-        description: "אנא בחר קובץ אודיו בלבד",
+        title: "Error",
+        description: "Please select an audio file only",
         variant: "destructive",
       });
       return;
@@ -51,8 +51,8 @@ const AudioUploader = () => {
 
     audioElement.addEventListener('error', () => {
       toast({
-        title: "שגיאה",
-        description: "לא ניתן לקרוא את קובץ האודיו",
+        title: "Error",
+        description: "Cannot read the audio file",
         variant: "destructive",
       });
       URL.revokeObjectURL(audioElement.src);
@@ -71,8 +71,8 @@ const AudioUploader = () => {
   const handleUpload = async () => {
     if (!selectedFile) {
       toast({
-        title: "שגיאה",
-        description: "אנא בחר קובץ אודיו תחילה",
+        title: "Error",
+        description: "Please select an audio file first",
         variant: "destructive",
       });
       return;
@@ -84,8 +84,8 @@ const AudioUploader = () => {
       const result = await uploadToServer(selectedFile);
       
       toast({
-        title: "הועלה בהצלחה!",
-        description: "קובץ האודיו הועלה ויעובד בקרוב",
+        title: "Uploaded successfully!",
+        description: "Audio file uploaded and will be processed soon",
       });
 
       // Reset form
@@ -97,8 +97,8 @@ const AudioUploader = () => {
 
     } catch (error) {
       toast({
-        title: "שגיאה בהעלאה",
-        description: error.message || "אירעה שגיאה בהעלאת הקובץ",
+        title: "Upload error",
+        description: error.message || "An error occurred while uploading the file",
         variant: "destructive",
       });
     } finally {
@@ -112,10 +112,10 @@ const AudioUploader = () => {
         <div className="text-center">
           <h2 className="text-xl font-semibold mb-2 flex items-center justify-center gap-2">
             <FileAudio className="h-5 w-5" />
-            העלאת קובץ אודיו
+            Upload Audio File
           </h2>
           <p className="text-sm text-muted-foreground">
-            בחר קובץ אודיו לתמלול אוטומטי
+            Select an audio file for automatic transcription
           </p>
         </div>
 
@@ -140,17 +140,17 @@ const AudioUploader = () => {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-sm">
                     <Clock className="h-4 w-4 text-primary" />
-                    <span>אורך:</span>
+                    <span>Duration:</span>
                     <span className="font-mono font-medium">
-                      {formatDuration(audioDuration)} דקות
+                      {formatDuration(audioDuration)} minutes
                     </span>
                   </div>
                   
                   <div className="flex items-center gap-2 text-sm">
                     <Brain className="h-4 w-4 text-primary" />
-                    <span>הערכת זמן עיבוד:</span>
+                    <span>Estimated processing time:</span>
                     <span className="font-mono font-medium">
-                      {calculateProcessingTime(audioDuration)} שניות
+                      {calculateProcessingTime(audioDuration)} seconds
                     </span>
                   </div>
                 </div>
@@ -166,12 +166,12 @@ const AudioUploader = () => {
             {isUploading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                מעלה...
+                Uploading...
               </>
             ) : (
               <>
                 <Upload className="h-4 w-4" />
-                העלה
+                Upload
               </>
             )}
           </Button>

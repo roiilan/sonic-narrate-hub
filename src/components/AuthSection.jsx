@@ -49,8 +49,8 @@ const AuthSection = () => {
         });
         if (error) throw error;
         toast({
-          title: "התחברת בהצלחה!",
-          description: "ברוך הבא חזרה",
+          title: "Login successful!",
+          description: "Welcome back",
         });
       } else {
         const redirectUrl = `${window.location.origin}/`;
@@ -63,13 +63,13 @@ const AuthSection = () => {
         });
         if (error) throw error;
         toast({
-          title: "נרשמת בהצלחה!",
-          description: "בדוק את האימייל שלך לאישור ההרשמה",
+          title: "Registration successful!",
+          description: "Check your email to confirm registration",
         });
       }
     } catch (error) {
       toast({
-        title: "שגיאה",
+        title: "Error",
         description: error.message,
         variant: "destructive",
       });
@@ -82,14 +82,14 @@ const AuthSection = () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
       toast({
-        title: "שגיאה בהתנתקות",
+        title: "Logout error",
         description: error.message,
         variant: "destructive",
       });
     } else {
       toast({
-        title: "התנתקת בהצלחה",
-        description: "להתראות!",
+        title: "Logged out successfully",
+        description: "Goodbye!",
       });
     }
   };
@@ -100,7 +100,7 @@ const AuthSection = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <User className="h-4 w-4 text-primary" />
-            <span className="text-sm text-muted-foreground">מחובר כ:</span>
+            <span className="text-sm text-muted-foreground">Logged in as:</span>
             <span className="font-medium">{user.email}</span>
           </div>
           <Button 
@@ -110,7 +110,7 @@ const AuthSection = () => {
             className="flex items-center gap-2"
           >
             <LogOut className="h-4 w-4" />
-            התנתק
+            Logout
           </Button>
         </div>
       </Card>
@@ -123,10 +123,10 @@ const AuthSection = () => {
         <div className="space-y-4">
           <div className="text-center">
             <h2 className="text-xl font-semibold mb-2">
-              {isLogin ? 'התחברות' : 'הרשמה'}
+              {isLogin ? 'Login' : 'Sign Up'}
             </h2>
             <p className="text-sm text-muted-foreground">
-              {isLogin ? 'התחבר לחשבון שלך' : 'צור חשבון חדש'}
+              {isLogin ? 'Login to your account' : 'Create a new account'}
             </p>
           </div>
 
@@ -136,7 +136,7 @@ const AuthSection = () => {
                 <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="email"
-                  placeholder="כתובת אימייל"
+                  placeholder="Email address"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10"
@@ -147,7 +147,7 @@ const AuthSection = () => {
                 <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="password"
-                  placeholder="סיסמה"
+                  placeholder="Password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-10"
@@ -158,7 +158,7 @@ const AuthSection = () => {
 
             <div className="space-y-2">
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'מעבד...' : (isLogin ? 'התחבר' : 'הרשם')}
+                {loading ? 'Processing...' : (isLogin ? 'Login' : 'Sign Up')}
               </Button>
               
               <div className="text-center">
@@ -167,7 +167,7 @@ const AuthSection = () => {
                   onClick={() => setIsLogin(!isLogin)}
                   className="text-sm text-primary hover:underline"
                 >
-                  {isLogin ? 'אין לך חשבון? הרשם כאן' : 'יש לך חשבון? התחבר כאן'}
+                  {isLogin ? "Don't have an account? Sign up here" : 'Have an account? Login here'}
                 </button>
               </div>
             </div>
@@ -178,7 +178,7 @@ const AuthSection = () => {
             onClick={() => setShowAuthForm(false)}
             className="w-full"
           >
-            ביטול
+            Cancel
           </Button>
         </div>
       </Card>
@@ -193,7 +193,7 @@ const AuthSection = () => {
           className="flex items-center gap-2"
         >
           <User className="h-4 w-4" />
-          התחבר / הרשם
+          Login / Sign Up
         </Button>
       </div>
     </Card>
