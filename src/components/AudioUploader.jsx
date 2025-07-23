@@ -1,14 +1,45 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { Upload, Clock, Brain, FileAudio, Loader2, X } from 'lucide-react';
+import { Upload, Clock, Brain, FileAudio, Loader2, X, ExternalLink } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 const AudioUploader = () => {
   const [uploadQueue, setUploadQueue] = useState([]);
+  const [userTokens, setUserTokens] = useState(null);
+  const [loading, setLoading] = useState(true);
   const fileInputRef = useRef(null);
   const { toast } = useToast();
+
+  // Fetch user tokens on component mount
+  useEffect(() => {
+    const fetchUserTokens = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('tokens')
+            .eq('id', user.id)
+            .single();
+          
+          if (error) {
+            console.error('Error fetching tokens:', error);
+          } else {
+            setUserTokens(profile?.tokens || 0);
+          }
+        }
+      } catch (error) {
+        console.error('Error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserTokens();
+  }, []);
 
   const formatDuration = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -43,11 +74,41 @@ const AudioUploader = () => {
     
     audioElement.addEventListener('loadedmetadata', () => {
       const duration = audioElement.duration;
+      const tokensRequired = Math.ceil(duration); // 1 token per second
+      
+      // Check if user has enough tokens
+      if (userTokens === null || userTokens < tokensRequired) {
+        toast({
+          title: "Insufficient Tokens",
+          description: (
+            <div className="space-y-2">
+              <p>You need {tokensRequired} tokens for this {Math.ceil(duration)}s audio file.</p>
+              <p>You currently have {userTokens || 0} tokens.</p>
+              <Button 
+                variant="link" 
+                className="p-0 h-auto text-primary underline"
+                onClick={() => window.open('https://your-extension-site.com', '_blank')}
+              >
+                Get more tokens <ExternalLink className="h-3 w-3 ml-1" />
+              </Button>
+            </div>
+          ),
+          variant: "destructive",
+        });
+        URL.revokeObjectURL(audioElement.src);
+        // Reset file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        return;
+      }
+
       const processingTime = calculateProcessingTime(duration);
       const newUpload = {
         id: generateId(),
         file,
         duration,
+        tokensRequired,
         processingTime,
         progress: 0,
         status: 'uploading', // uploading, processing, completed, error
@@ -111,6 +172,17 @@ const AudioUploader = () => {
       // Upload to server
       const result = await uploadToServer(uploadItem.file);
       
+      // Deduct tokens from user profile
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const newTokens = userTokens - uploadItem.tokensRequired;
+        await supabase
+          .from('profiles')
+          .update({ tokens: newTokens })
+          .eq('id', user.id);
+        setUserTokens(newTokens);
+      }
+      
       // Clear progress interval and mark as completed
       clearInterval(progressInterval);
       setUploadQueue(prev => prev.map(item => 
@@ -121,7 +193,7 @@ const AudioUploader = () => {
 
       toast({
         title: "Transcription completed!",
-        description: `${uploadItem.fileName} has been transcribed successfully`,
+        description: `${uploadItem.fileName} has been transcribed successfully. ${uploadItem.tokensRequired} tokens used.`,
       });
 
     } catch (error) {
@@ -197,6 +269,13 @@ const AudioUploader = () => {
             <p className="text-muted-foreground max-w-md mx-auto">
               Select an audio file for automatic transcription. Multiple files can be processed simultaneously.
             </p>
+            {!loading && (
+              <div className="flex items-center justify-center gap-2 text-sm">
+                <span className="text-muted-foreground">Available tokens:</span>
+                <span className="font-semibold text-primary">{userTokens || 0}</span>
+                <span className="text-xs text-muted-foreground">(1 token = 1 second)</span>
+              </div>
+            )}
           </div>
 
           <div className="space-y-4 max-w-md mx-auto">
