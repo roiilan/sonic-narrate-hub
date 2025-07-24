@@ -166,22 +166,19 @@ const AudioUploader = () => {
       // Upload to server
       const result = await uploadToServer(uploadItem.file);
       
-      // Deduct tokens from user profile
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('tokens')
-          .eq('id', user.id)
-          .single();
-        
-        const currentTokens = profile?.tokens || 0;
-        const newTokens = currentTokens - uploadItem.tokensRequired;
-        
-        await supabase
-          .from('profiles')
-          .update({ tokens: newTokens })
-          .eq('id', user.id);
+      // Deduct tokens on server side after successful transcription
+      const { data: session } = await supabase.auth.getSession();
+      if (session?.session?.access_token) {
+        const { data: deductResult, error: deductError } = await supabase.functions.invoke('deduct-tokens', {
+          body: { tokensToDeduct: uploadItem.tokensRequired },
+          headers: {
+            Authorization: `Bearer ${session.session.access_token}`,
+          },
+        });
+
+        if (deductError) {
+          throw new Error('Failed to deduct tokens: ' + deductError.message);
+        }
       }
       
       // Clear progress interval and mark as completed
