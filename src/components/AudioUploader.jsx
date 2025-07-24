@@ -1,13 +1,15 @@
 import { useState, useRef } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { useToast } from '@/hooks/use-toast';
-import { Upload, Clock, Brain, FileAudio, Loader2, X, ExternalLink } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Clock, File, X } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 const AudioUploader = () => {
   const [uploadQueue, setUploadQueue] = useState([]);
+  const [insufficientTokensDialog, setInsufficientTokensDialog] = useState({ open: false, message: '', tokens: 0 });
   const fileInputRef = useRef(null);
   const { toast } = useToast();
 
@@ -18,192 +20,176 @@ const AudioUploader = () => {
   };
 
   const calculateProcessingTime = (durationInSeconds) => {
-    // Every minute = 10 seconds processing time
-    const processingSeconds = Math.ceil(durationInSeconds / 6);
-    return processingSeconds;
+    return Math.ceil(durationInSeconds / 6);
   };
 
-  const generateId = () => Date.now() + Math.random().toString(36).substr(2, 9);
-
   const handleFileSelect = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('audio/')) {
-      toast({
-        title: "Error",
-        description: "Please select an audio file only",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Create audio element to get duration
-    const audioElement = document.createElement('audio');
-    audioElement.src = URL.createObjectURL(file);
+    const files = Array.from(event.target.files);
     
-    audioElement.addEventListener('loadedmetadata', async () => {
-      const duration = audioElement.duration;
-      const tokensRequired = Math.ceil(duration); // 1 token per second
-      
-      // Check user's current tokens from DB
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('tokens')
-            .eq('id', user.id)
-            .single();
-          
-          if (error) {
-            console.error('Error fetching tokens:', error);
-            return;
-          }
-          
-          const currentTokens = profile?.tokens || 0;
-          
-          // Check if user has enough tokens
-          if (currentTokens < tokensRequired) {
-            toast({
-              title: "אין מספיק טוקנים",
-              description: (
-                <div className="space-y-2">
-                  <p>אתה צריך {tokensRequired} טוקנים עבור קובץ אודיו של {Math.ceil(duration)} שניות.</p>
-                  <p>כרגע יש לך {currentTokens} טוקנים.</p>
-                  <Button 
-                    variant="link" 
-                    className="p-0 h-auto text-primary underline"
-                    onClick={() => window.open('https://your-extension-site.com', '_blank')}
-                  >
-                    רכוש מנוי עם טוקנים <ExternalLink className="h-3 w-3 ml-1" />
-                  </Button>
-                </div>
-              ),
-              variant: "destructive",
-            });
-            URL.revokeObjectURL(audioElement.src);
-            if (fileInputRef.current) {
-              fileInputRef.current.value = '';
-            }
-            return;
-          }
+    if (files.length === 0) return;
 
-          const processingTime = calculateProcessingTime(duration);
-          const newUpload = {
-            id: generateId(),
-            file,
-            duration,
-            tokensRequired,
-            processingTime,
-            progress: 0,
-            status: 'uploading',
-            fileName: file.name,
-            startTime: Date.now()
-          };
-          
-          setUploadQueue(prev => [...prev, newUpload]);
-          startUpload(newUpload);
-          URL.revokeObjectURL(audioElement.src);
-          
-          if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-          }
-        }
+    for (const file of files) {
+      // Validate file type
+      const validTypes = ['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/m4a'];
+      if (!validTypes.includes(file.type) && !file.name.match(/\.(mp3|wav|m4a|mpeg)$/i)) {
+        toast({
+          title: "Invalid file type",
+          description: `${file.name} is not a supported audio format. Please upload MP3, WAV, or M4A files.`,
+          variant: "destructive",
+        });
+        continue;
+      }
+
+      // Check file size (50MB limit)
+      if (file.size > 50 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: `${file.name} exceeds the 50MB limit.`,
+          variant: "destructive",
+        });
+        continue;
+      }
+
+      try {
+        // Add file to upload queue without checking tokens client-side
+        const uploadItem = {
+          id: Date.now() + Math.random(),
+          file,
+          status: 'preparing',
+          progress: 0,
+          duration: formatDuration(0),
+          processingTime: 0,
+        };
+
+        setUploadQueue(prev => [...prev, uploadItem]);
+        
+        // Start upload after a brief delay to show the UI update
+        setTimeout(() => startUpload(uploadItem), 100);
+        
       } catch (error) {
-        console.error('Error:', error);
+        console.error('Error during file validation:', error);
         toast({
           title: "Error",
-          description: "Failed to check tokens",
+          description: "An error occurred while preparing the upload.",
           variant: "destructive",
         });
       }
-    });
-
-    audioElement.addEventListener('error', () => {
-      toast({
-        title: "Error",
-        description: "Cannot read the audio file",
-        variant: "destructive",
-      });
-      URL.revokeObjectURL(audioElement.src);
-    });
-  };
-
-  const uploadToServer = async (file) => {
-    const formData = new FormData();
-    formData.append('audio_file', file);
-
-    const response = await fetch('http://localhost:8000/transcribe/', {
-      method: 'POST',
-      body: formData,
-      headers: {
-        'accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Upload failed: ${response.statusText}`);
     }
 
-    return await response.json();
+    // Clear the input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const startUpload = async (uploadItem) => {
     try {
-      // Start progress animation
+      // Update status to processing
+      setUploadQueue(prev => 
+        prev.map(item => 
+          item.id === uploadItem.id 
+            ? { ...item, status: 'processing', progress: 10 }
+            : item
+        )
+      );
+
+      const startTime = Date.now();
+      
+      // Simulate progress updates
       const progressInterval = setInterval(() => {
-        setUploadQueue(prev => prev.map(item => 
+        setUploadQueue(prev => 
+          prev.map(item => {
+            if (item.id === uploadItem.id && item.progress < 90) {
+              const newProgress = Math.min(item.progress + Math.random() * 10, 90);
+              const elapsedTime = Date.now() - startTime;
+              return {
+                ...item,
+                progress: newProgress,
+                processingTime: Math.floor(elapsedTime / 1000)
+              };
+            }
+            return item;
+          })
+        );
+      }, 1000);
+
+      // Convert file to base64 for Edge Function
+      const reader = new FileReader();
+      const audioData = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(uploadItem.file);
+      });
+
+      // Get current session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session');
+      }
+
+      // Call transcribe edge function
+      const { data: result, error } = await supabase.functions.invoke('transcribe', {
+        body: { 
+          audioData,
+          fileName: uploadItem.file.name
+        }
+      });
+
+      clearInterval(progressInterval);
+
+      if (error) {
+        throw new Error(error.message || 'Transcription failed');
+      }
+
+      // Check response code
+      if (result.code === 2) {
+        // Insufficient tokens
+        setInsufficientTokensDialog({
+          open: true,
+          message: result.description,
+          tokens: result.tokens
+        });
+
+        // Remove from queue
+        setUploadQueue(prev => prev.filter(item => item.id !== uploadItem.id));
+        return;
+      }
+
+      // Update to completed
+      setUploadQueue(prev => 
+        prev.map(item => 
           item.id === uploadItem.id 
             ? { 
                 ...item, 
-                progress: Math.min(item.progress + (100 / (item.processingTime * 10)), 95) 
+                status: 'completed', 
+                progress: 100,
+                result: result.transcript,
+                processingTime: Math.floor((Date.now() - startTime) / 1000)
               }
             : item
-        ));
-      }, 100);
-
-      // Upload to server
-      const result = await uploadToServer(uploadItem.file);
-      
-      // Deduct tokens on server side after successful transcription
-      const { data: session } = await supabase.auth.getSession();
-      if (session?.session?.access_token) {
-        const { data: deductResult, error: deductError } = await supabase.functions.invoke('deduct-tokens', {
-          body: { tokensToDeduct: uploadItem.tokensRequired },
-          headers: {
-            Authorization: `Bearer ${session.session.access_token}`,
-          },
-        });
-
-        if (deductError) {
-          throw new Error('Failed to deduct tokens: ' + deductError.message);
-        }
-      }
-      
-      // Clear progress interval and mark as completed
-      clearInterval(progressInterval);
-      setUploadQueue(prev => prev.map(item => 
-        item.id === uploadItem.id 
-          ? { ...item, progress: 100, status: 'completed', result }
-          : item
-      ));
+        )
+      );
 
       toast({
-        title: "Transcription completed!",
-        description: `${uploadItem.fileName} has been transcribed successfully. ${uploadItem.tokensRequired} tokens used.`,
+        title: "Upload successful",
+        description: `${uploadItem.file.name} has been processed successfully.`,
       });
 
     } catch (error) {
-      setUploadQueue(prev => prev.map(item => 
-        item.id === uploadItem.id 
-          ? { ...item, status: 'error', error: error.message }
-          : item
-      ));
+      console.error('Upload error:', error);
+      
+      // Update to error state
+      setUploadQueue(prev => 
+        prev.map(item => 
+          item.id === uploadItem.id 
+            ? { ...item, status: 'error', progress: 0 }
+            : item
+        )
+      );
 
       toast({
-        title: "Upload error",
-        description: error.message || "An error occurred while uploading the file",
+        title: "Upload failed",
+        description: error.message || "An error occurred during upload.",
         variant: "destructive",
       });
     }
@@ -215,77 +201,113 @@ const AudioUploader = () => {
 
   return (
     <div className="space-y-6">
-      {/* Loading Queue - Top Section */}
+      {/* Processing Queue */}
       {uploadQueue.length > 0 && (
-        <Card className="p-4 space-y-4">
-          <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-            <Brain className="h-4 w-4" />
-            Processing Queue
-          </h3>
-          {uploadQueue.map((upload) => (
-            <div key={upload.id} className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="truncate flex-1 mr-2">📁 {upload.fileName}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">
-                    {upload.status === 'completed' ? 'Done' : `${Math.round(upload.progress)}%`}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeUpload(upload.id)}
-                    className="h-6 w-6 p-0"
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Processing Queue
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {uploadQueue.map((upload) => (
+              <div key={upload.id} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <span className="text-sm truncate">{upload.file.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {upload.status === 'completed' ? 'Done' : 
+                       upload.status === 'error' ? 'Error' : 
+                       `${Math.round(upload.progress)}%`}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeUpload(upload.id)}
+                      className="h-6 w-6 p-0"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
+                
+                <Progress value={upload.progress} className="w-full" />
+                
+                {upload.status === 'processing' && (
+                  <div className="text-xs text-muted-foreground">
+                    Processing time: {upload.processingTime}s
+                  </div>
+                )}
+                
+                {upload.status === 'error' && (
+                  <div className="text-xs text-destructive">
+                    Upload failed. Please try again.
+                  </div>
+                )}
+                
+                {upload.status === 'completed' && upload.result && (
+                  <div className="text-xs text-green-600">
+                    Transcription completed successfully!
+                  </div>
+                )}
               </div>
-              <div className="w-full bg-muted rounded-full h-2">
-                <div 
-                  className="progress-bar h-2"
-                  style={{ width: `${upload.progress}%` }}
-                />
-              </div>
-              {upload.status === 'error' && (
-                <p className="text-xs text-destructive">{upload.error}</p>
-              )}
-            </div>
-          ))}
+            ))}
+          </CardContent>
         </Card>
       )}
 
-      {/* Upload Section */}
-      <Card className="p-8 text-center bg-gradient-to-br from-card via-card to-primary/5 border border-primary/20 shadow-lg">
-        <div className="space-y-6">
-          <div className="space-y-3">
-            <div className="mx-auto w-16 h-16 bg-gradient-to-br from-primary to-purple-500 rounded-2xl flex items-center justify-center">
-              <FileAudio className="h-8 w-8 text-white" />
-            </div>
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
-              Upload Audio File
-            </h2>
-            <p className="text-muted-foreground max-w-md mx-auto">
-              Select an audio file for automatic transcription. Multiple files can be processed simultaneously.
-            </p>
+      {/* Upload Area */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Upload Audio File</CardTitle>
+          <CardDescription>
+            Select an audio file for transcription. Supported formats: MP3, WAV, M4A
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center hover:border-muted-foreground/50 transition-colors">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="audio/*"
+              onChange={handleFileSelect}
+              multiple
+              className="hidden"
+              id="audio-upload"
+            />
+            <label
+              htmlFor="audio-upload"
+              className="cursor-pointer flex flex-col items-center gap-2"
+            >
+              <File className="h-8 w-8 text-muted-foreground" />
+              <div className="text-sm font-medium">Click to select audio files</div>
+              <div className="text-xs text-muted-foreground">
+                Or drag and drop audio files here
+              </div>
+            </label>
           </div>
-
-          <div className="space-y-4 max-w-md mx-auto">
-            <div className="relative">
-              <Input
-                ref={fileInputRef}
-                type="file"
-                accept="audio/*"
-                onChange={handleFileSelect}
-                className="cursor-pointer h-12 text-center file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
-              />
-            </div>
-            
-            <div className="text-xs text-muted-foreground">
-              Supported formats: MP3, WAV, M4A, and more
-            </div>
-          </div>
-        </div>
+        </CardContent>
       </Card>
+
+      <AlertDialog open={insufficientTokensDialog.open} onOpenChange={(open) => setInsufficientTokensDialog(prev => ({ ...prev, open }))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Insufficient Tokens</AlertDialogTitle>
+            <AlertDialogDescription>
+              {insufficientTokensDialog.message} You have {insufficientTokensDialog.tokens} tokens remaining.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setInsufficientTokensDialog(prev => ({ ...prev, open: false }))}>
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import AuthSection from '@/components/AuthSection';
 import AudioUploader from '@/components/AudioUploader';
+import UserProfile from '@/components/UserProfile';
 
 const Index = () => {
   const [user, setUser] = useState(null);
@@ -24,10 +25,15 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      <div className="container mx-auto px-6 py-8 max-w-lg">
+      <div className="container mx-auto px-6 py-8 max-w-lg space-y-6">
         <AuthSection />
         
-        {user && <AudioUploader />}
+        {user && (
+          <>
+            <UserProfile />
+            <AudioUploader />
+          </>
+        )}
       </div>
     </div>
   );

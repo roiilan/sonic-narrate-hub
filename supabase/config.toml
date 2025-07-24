@@ -44,5 +44,11 @@ enabled = true
 port = 54329
 ip_version = "dual"
 
+[functions.get-profile]
+verify_jwt = true
+
+[functions.transcribe]
+verify_jwt = true
+
 [functions.deduct-tokens]
 verify_jwt = true
